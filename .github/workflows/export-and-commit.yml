@@ -1,0 +1,77 @@
+name: Export from JPiche environment to GitHub and commit to main
+# Export solution from DEV environment and commit directly to Main branch
+# unpack it and prepare, commit and push a git branch with the changes
+
+on:
+  workflow_dispatch:
+    inputs:
+      ######################
+      # Edit the following #
+      
+      solution_name:
+        description: 'Expense Claims'
+        required: true
+        default: ExpenseClaims
+        
+      # Editing ends       #
+      ######################
+env:
+  RUNNER_DEBUG: 1
+
+permissions:
+  contents: write
+
+jobs:
+  export-from-dev:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4.1.7
+      with:
+        lfs: true
+
+    - name: Install Power Platform Tools
+      uses: microsoft/powerplatform-actions/actions-install@v1.6.0
+
+    - name: Set environment URL based on actor
+      id: set-env-url
+      run: |
+        echo "ENVIRONMENT_URL=${{ secrets.DEV_ENV_GENERAL }}" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Who Am I Action
+      uses: microsoft/powerplatform-actions/who-am-i@v1.6.0
+      with:
+        environment-url: ${{ env.ENVIRONMENT_URL }}
+        app-id: ${{ secrets.ENTRA_APP_CLIENTID }}
+        client-secret: ${{ secrets.ENTRA_APP_SPN }}
+        tenant-id: ${{ secrets.ENTRA_APP_TENANTID }}
+
+    - name: Export Solution Action
+      uses: microsoft/powerplatform-actions/export-solution@v1.6.0
+      with:
+        environment-url: ${{ env.ENVIRONMENT_URL }}
+        app-id: ${{ secrets.ENTRA_APP_CLIENTID }}
+        client-secret: ${{ secrets.ENTRA_APP_SPN }}
+        tenant-id: ${{ secrets.ENTRA_APP_TENANTID }}
+        solution-name: ${{ github.event.inputs.solution_name }}
+        solution-output-file: ${{ github.event.repository.name}}/${{ github.event.inputs.solution_name }}_unmanaged.zip
+
+    - name: Unpack Solution Action
+      uses: microsoft/powerplatform-actions/unpack-solution@v1.6.0
+      with:
+        solution-file: ${{ github.event.repository.name}}/${{ github.event.inputs.solution_name }}_unmanaged.zip
+        solution-folder: ${{ github.event.repository.name}}/${{ github.event.inputs.solution_name }}
+        solution-type: 'Unmanaged'
+        overwrite-files: true
+    
+    - name: Git Fetch and Commit
+      run: |
+        git fetch --all  
+        git config --global user.email "no-reply@github.com"
+        git config --global user.name "GitHub Actions"
+        git checkout main
+        git add --all 
+        git commit -m "Updates from the dev environment"
+        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+        git push
